@@ -13,3 +13,6 @@ i2c-echo.ino
 Version améliorée du programme "i2c-test-slave.ino" du chapitre 4.
 Le programme "i2c-test-master.ino", qui dialogue avec, est dorénavant intégré en version améliorée au programme "dicicino-master.ino".
 
+i2c-aiea.ino
+
+Version améliorée du programme "aiguillage-electro.ino" du chapitre 10.
