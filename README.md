@@ -6,7 +6,7 @@ Pourquoi ne pas utiliser ces microcontrôleurs très populaires et peu coûteux 
 dicicino-multi.ino
 
 Version améliorée du programme "dicicino-uno-totale.ino" du chapitre 12.
-Il intègre les fonctions suivantes : pilotage DCC, programmeur de CV, scanner I²C, testeur I²C, changeur d'adresse I²C, moniteur I²C.
+Il intègre les fonctions suivantes : pilotage DCC, programmeur de CV, scanner I²C, testeur I²C, changeur d'adresse I²C, moniteur I²C, testeur PCA9685, Testeur/programmeur d'aiguillages à électro-aimants.
 
 i2c-echo.ino
 
