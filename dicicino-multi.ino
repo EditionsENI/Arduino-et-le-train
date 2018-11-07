@@ -6,6 +6,7 @@
 // -> https://codeinter-net.blogspot.com/
 
 #include<Wire.h>
+#include <Adafruit_PWMServoDriver.h>
 #include <FlexiTimer2.h>
 #include <LiquidCrystal.h>
 LiquidCrystal lcd(8, 9, 4, 5, 6, 7);
@@ -29,7 +30,11 @@ LiquidCrystal lcd(8, 9, 4, 5, 6, 7);
 #define UI_PAGE_I2C_ADDR 33
 #define UI_PAGE_I2C_MONI 34
 #define UI_PAGE_I2C_NAME 35
-#define UI_NUM_MENU_OPTIONS 7
+#define UI_PAGE_PCA9685_MAIN 41
+#define UI_PAGE_PCA9685 42
+#define UI_PAGE_I2C_AIEA 51
+
+#define UI_NUM_MENU_OPTIONS 9
 
 byte uiCurrentPage;
 byte uiPageMainCursor;
@@ -1077,7 +1082,7 @@ byte uiPageMainProg(byte button, byte mode)
 
 byte uiPageMainI2CScan(byte button, byte mode)
 {
-  static byte baseAddr=0;
+  static byte baseAddr=0x10;
   if(mode==UI_MODE_LOOP)
   {
     char text[4];
@@ -1085,12 +1090,14 @@ byte uiPageMainI2CScan(byte button, byte mode)
     for(i=0; i<8; i++)
     {
       lcd.setCursor((i<<2)&0xF,(i>>2)&1);
+      if(baseAddr+i==0x7F) {lcd.print(F("   "));break;}
+
       sprintf(text,"%02X",baseAddr+i);
       lcd.print(text);
   
       Wire.beginTransmission(baseAddr+i);
       byte ret = Wire.endTransmission();
-      lcd.write(ret?' ':'*');
+      lcd.write(ret?' ':0xFF);
     }
   }
 
@@ -1102,7 +1109,7 @@ byte uiPageMainI2CScan(byte button, byte mode)
   switch (button)
   {
     case DUI_KEY_UP :
-      if(baseAddr>7)
+      if(baseAddr>=0x18)
         baseAddr-=8;
       else
         baseAddr=0x78;
@@ -1111,7 +1118,7 @@ byte uiPageMainI2CScan(byte button, byte mode)
       if(baseAddr<=0x70)
         baseAddr+=8;
       else
-        baseAddr=0;
+        baseAddr=0x10;
       break;
     case DUI_KEY_ESC :
       return UI_PAGE_MAIN;
@@ -1495,6 +1502,207 @@ byte uiPageMainI2CName(byte button, byte mode)
   return 0;
 }
 
+// ========================================
+// === Pilotage direct du PCA9685       ===
+// ========================================
+
+// Caractères programmable pour faire une échelle graduée
+uint8_t charGrad0[8]  = {0,0,0,0,0,0x15,0x15};
+uint8_t charGrad1[8]  = {0x10,0x10,0x10,0x10,0,0x15,0x15};
+uint8_t charGrad2[8]  = {4,4,4,4,0,0x15,0x15};
+uint8_t charGrad3[8]  = {1,1,1,1,0,0x15,0x15};
+
+byte PCA9685addr=0;
+
+byte uiPagePCA9685(byte button, byte mode)
+{
+  static Adafruit_PWMServoDriver pwm;
+  static byte selOut=0;  // sortie sélectionnée
+  static byte curPos, oldPos;
+  char text[4];
+  word out;
+  if(mode & UI_MODE_DRAW_ALL)
+  {
+    pwm = Adafruit_PWMServoDriver(PCA9685addr);
+    pwm.begin();        // Initialisation du circuit
+    pwm.setPWMFreq(50); // Fréquence de fonctionnement
+    selOut=0;
+    lcd.createChar(0, charGrad0);
+    lcd.createChar(1, charGrad1);
+    lcd.createChar(2, charGrad2);
+    lcd.createChar(3, charGrad3);
+    lcd.clear();
+    lcd.setCursor(0, 1);
+    for(int i=0; i<12; i++) lcd.write((byte)0);
+    lcd.setCursor(0, 0);
+    lcd.print(F("0123456789ABCDEF"));
+    lcd.blink();
+    button=DUI_KEY_SPEED; // Pour afficher le curseur dès le démarrage
+  }
+  switch (button)
+  {
+    case DUI_KEY_LEFT :
+      if(selOut>0) selOut--;
+      button=DUI_KEY_SPEED;
+      break;
+    case DUI_KEY_RIGHT :
+      if(selOut<15) selOut++;
+      button=DUI_KEY_SPEED;
+      break;
+    case DUI_KEY_ESC :
+      return UI_PAGE_PCA9685_MAIN;
+  }
+  if(button==DUI_KEY_SPEED) // Action sur le potentiomètre
+  {
+      out=(speedInput*3)>>3;
+      curPos=out>>5;
+      if(curPos!=oldPos)
+      {
+        lcd.setCursor(oldPos, 1);
+        lcd.write((byte)0);
+      }
+      lcd.setCursor(curPos, 1);
+      lcd.write((byte)(((out&0x1F)<11)?1:(((out&0x1F)<22)?2:3)));
+      oldPos=curPos;
+      out+=64;
+      sprintf(text,"%3d",out);
+      lcd.setCursor(13, 1);
+      lcd.print(text);
+      lcd.setCursor(selOut, 0);
+      pwm.setPWM(selOut, 0, out); // Fixe la valeur du servo
+  }
+  return 0;
+}
+
+byte uiPageMainPCA9685(byte button, byte mode)
+{
+  static byte pos=0;  // position du curseur
+
+  if(mode & UI_MODE_DRAW_ALL)
+  {
+    PCA9685addr=0;
+    pos=0;
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print(F("PCA9685 : 00"));
+    return 0;
+  }
+  switch (button)
+  {
+    case DUI_KEY_LEFT :
+      if(pos>0) pos--;
+      break;
+    case DUI_KEY_RIGHT :
+      if(pos<1) pos++;
+      break;
+    case DUI_KEY_ESC :
+      return UI_PAGE_MAIN;
+    case DUI_KEY_OK :
+      lcd.setCursor(0, 1);
+      if((PCA9685addr<0x10)||(PCA9685addr>0x7E))
+      {
+        lcd.print(F("Adr interdite   "));
+        break;
+      }
+      return UI_PAGE_PCA9685;
+  }
+  PCA9685addr=uiPageHexInput(button,10,0,pos,PCA9685addr);
+  return 0;
+}
+
+// =======================================================
+// === Test et programmation aiguillage électro-aimant ===
+// =======================================================
+
+uint8_t charAigDir[8]  = {0x11,0x12,0x14,0x10,0x10,0x10,0x10};
+uint8_t charAigDev[8]  = {0x11,0x12,0x4,0x8,0x10,0x10,0x10};
+
+byte uiPageMainProgAIEA(byte button, byte mode)
+{
+  static byte addr=0;
+  static byte pos=0; // Position du curseur
+  static byte dir=0; // Programmation en voie directe
+  static byte dev=0; // Programmation en voie déviée
+  static byte num=0; // Identifiant de l'aiguillage
+  static byte dirDev=0; // Voie active pour le test
+
+  if(mode & UI_MODE_DRAW_ALL)
+  {
+    lcd.createChar(0, charAigDir);
+    lcd.createChar(1, charAigDev);
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print(F("00 : \x8=00  \x9=00"));
+    lcd.setCursor(0, 1);
+    lcd.print(F("TEST \x8  PROG 00"));
+    lcd.setCursor(0, 0);
+    lcd.blink();
+    pos=0;
+    dir=0;
+    dev=0;
+    num=0;
+    dirDev=0;
+    return 0;
+  }
+  switch (button)
+  {
+    case DUI_KEY_LEFT :
+      if(pos>0) pos--;
+      break;
+    case DUI_KEY_RIGHT :
+      if(pos<8) pos++;
+      break;
+    case DUI_KEY_ESC :
+      return UI_PAGE_MAIN;
+    case DUI_KEY_OK :
+      if((pos==7)||(pos==8)) // La programmation n'est possible que si le curseur est sur la case PROG
+      {
+          Wire.beginTransmission(addr);
+          Wire.write((byte)0x34); // Programmation de la configuration
+          Wire.write(num);
+          Wire.write(dir);
+          Wire.write(dev);
+          Wire.endTransmission();
+      }
+      return 0;
+  }
+  switch(pos)
+  {
+    case 0 :
+    case 1 :
+      addr=uiPageHexInput(button,0,0,pos,addr);
+      break;
+    case 2 :
+    case 3 :
+      dir=uiPageHexInput(button,7,0,pos&1,dir);
+      break;
+    case 4 :
+    case 5 :
+      dev=uiPageHexInput(button,13,0,pos&1,dev);
+      break;
+    case 6 :
+      lcd.setCursor(5, 1);
+      switch (button)
+      {
+        case DUI_KEY_UP :
+        case DUI_KEY_DOWN :
+          dirDev=!dirDev;
+          lcd.write(dirDev);
+          Wire.beginTransmission(addr);
+          Wire.write((byte)0x36); // Adressage direct
+          Wire.write(dirDev?dev:dir);
+          Wire.endTransmission();
+          break;
+      }
+      lcd.setCursor(5, 1);
+      break;
+    case 7 :
+    case 8 :
+      num=uiPageHexInput(button,13,1,pos-7,num);
+      break;
+  }
+  return 0;
+}
 
 // ========================================
 // === Page d'accueil                   ===
@@ -1536,6 +1744,8 @@ byte uiPageMain(byte button, byte mode)
         case 5 : return UI_PAGE_I2C_ADDR;
         case 6 : return UI_PAGE_I2C_MONI;
         case 7 : return UI_PAGE_I2C_NAME;
+        case 8 : return UI_PAGE_PCA9685_MAIN;
+        case 9 : return UI_PAGE_I2C_AIEA;
       }
       break;
   }
@@ -1549,11 +1759,15 @@ byte uiPageMain(byte button, byte mode)
     case 5 : lcd.print(F("I2C Addr      ")); break;
     case 6 : lcd.print(F("I2C Dialog    ")); break;
     case 7 : lcd.print(F("I2C Id        ")); break;
+    case 8 : lcd.print(F("TEST PCA9685  ")); break;
+    case 9 : lcd.print(F("PROG Aig EA   ")); break;
 
 //    Les fonctions suivantes sont en cours de mise au point
 //    -> https://codeinter-net.blogspot.com/
 
-//    case 7 : lcd.print(F("TEST Aiguilles")); break;
+
+//    case 7 : lcd.print(F("TEST Aig elec")); break;
+//    case 7 : lcd.print(F("TEST Aig servo")); break;
 //    case 10: lcd.print(F("TEST Signaux  ")); break;
 //    case 12: lcd.print(F("TEST Capteurs ")); break;
 //    case 8 : lcd.print(F("PROG Aig elec ")); break;
@@ -1583,6 +1797,9 @@ byte uiPage(byte button, byte mode)
     case UI_PAGE_I2C_ADDR : return uiPageMainI2CAddr(button, mode);
     case UI_PAGE_I2C_MONI : return uiPageMainI2CMoni(button, mode);
     case UI_PAGE_I2C_NAME : return uiPageMainI2CName(button, mode);
+    case UI_PAGE_PCA9685_MAIN : return uiPageMainPCA9685(button, mode);
+    case UI_PAGE_PCA9685 : return uiPagePCA9685(button, mode);
+    case UI_PAGE_I2C_AIEA : return uiPageMainProgAIEA(button, mode);
   }
 }
 
@@ -1596,7 +1813,6 @@ void setup()
   delay(200);
 
   dccClear();
-  pinMode(LED_BUILTIN, OUTPUT);
   pinMode(DCC_OUT1, OUTPUT);
   FlexiTimer2::set(1, 0.000056, dccInterrupt);
   FlexiTimer2::start();
