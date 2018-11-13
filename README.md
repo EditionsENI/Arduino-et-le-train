@@ -16,3 +16,7 @@ Le programme "i2c-test-master.ino", qui dialogue avec, est dorénavant intégré
 i2c-aiea.ino
 
 Version améliorée du programme "aiguillage-electro.ino" du chapitre 10.
+
+i2c-aisv.ino
+
+Version améliorée du programme "aiguillage-servo.ino" du chapitre 10.
