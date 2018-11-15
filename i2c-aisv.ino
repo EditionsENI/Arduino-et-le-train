@@ -121,6 +121,7 @@ void servoPos(byte addr, byte servo, byte pos) // positionne un servomoteur
 
 void changePos(byte aig, byte pos) // Positionne l'aiguillage, fonction de bas niveau (pos = SERVO_MIN .. SERVO_MAX)
 {
+  if((pos<SERVO_MIN)||(pos>SERVO_MAX)) return; // Position extrême -> déplacement interdit
   byte addr=aig>>4;
   byte servo=aig&0xf;
   servoPos(addr, servo, pos);
