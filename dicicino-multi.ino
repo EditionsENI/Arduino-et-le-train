@@ -9,7 +9,7 @@
 #include <Adafruit_PWMServoDriver.h>
 #include <FlexiTimer2.h>
 #include <LiquidCrystal.h>
-LiquidCrystal lcd(8, 9, 4, 5, 6, 7);
+LiquidCrystal lcd(8, 9, 4, 5, 6, 7); // L'assignation des connexions est imposée par le shield LCD / clavier
 
 #define DATASIZE 4 // On se limite à des trames de 4 octets
 
@@ -33,8 +33,9 @@ LiquidCrystal lcd(8, 9, 4, 5, 6, 7);
 #define UI_PAGE_PCA9685_MAIN 41
 #define UI_PAGE_PCA9685 42
 #define UI_PAGE_I2C_AIEA 51
+#define UI_PAGE_I2C_AISV 52
 
-#define UI_NUM_MENU_OPTIONS 9
+#define UI_NUM_MENU_OPTIONS 10
 
 byte uiCurrentPage;
 byte uiPageMainCursor;
@@ -1632,9 +1633,9 @@ byte uiPageMainProgAIEA(byte button, byte mode)
     lcd.createChar(1, charAigDev);
     lcd.clear();
     lcd.setCursor(0, 0);
-    lcd.print(F("00 : \x8=00  \x9=00"));
-    lcd.setCursor(0, 1);
-    lcd.print(F("TEST \x8  PROG 00"));
+    lcd.print(F("ea 00: \x8=00 \x9=00"));
+    lcd.setCursor(2, 1);
+    lcd.print(F("TEST \x8 PROG 00"));
     lcd.setCursor(0, 0);
     lcd.blink();
     pos=0;
@@ -1670,18 +1671,18 @@ byte uiPageMainProgAIEA(byte button, byte mode)
   {
     case 0 :
     case 1 :
-      addr=uiPageHexInput(button,0,0,pos,addr);
+      addr=uiPageHexInput(button,3,0,pos,addr);
       break;
     case 2 :
     case 3 :
-      dir=uiPageHexInput(button,7,0,pos&1,dir);
+      dir=uiPageHexInput(button,9,0,pos&1,dir);
       break;
     case 4 :
     case 5 :
-      dev=uiPageHexInput(button,13,0,pos&1,dev);
+      dev=uiPageHexInput(button,14,0,pos&1,dev);
       break;
     case 6 :
-      lcd.setCursor(5, 1);
+      lcd.setCursor(7, 1);
       switch (button)
       {
         case DUI_KEY_UP :
@@ -1694,11 +1695,136 @@ byte uiPageMainProgAIEA(byte button, byte mode)
           Wire.endTransmission();
           break;
       }
-      lcd.setCursor(5, 1);
+      lcd.setCursor(7, 1);
       break;
     case 7 :
     case 8 :
-      num=uiPageHexInput(button,13,1,pos-7,num);
+      num=uiPageHexInput(button,14,1,pos-7,num);
+      break;
+  }
+  return 0;
+}
+
+// =======================================================
+// === Test et programmation aiguillage servomoteur    ===
+// =======================================================
+
+byte uiPageMainProgAISV(byte button, byte mode)
+{
+  static byte addr=0;
+  static byte pos=0; // Position du curseur
+  static byte dir=0; // Programmation en voie directe
+  static byte dev=0; // Programmation en voie déviée
+  static byte num=0; // Identifiant de l'aiguillage
+  static byte dirDev=0; // Voie active pour le test
+
+  if(mode & UI_MODE_DRAW_ALL)
+  {
+    lcd.createChar(0, charAigDir);
+    lcd.createChar(1, charAigDev);
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print(F("00: 00 \x8=00 \x9=00"));
+    lcd.setCursor(2, 1);
+    lcd.print(F("TEST \x8  PROG "));
+    lcd.write(0x7E);
+    lcd.setCursor(0, 0);
+    lcd.blink();
+    pos=0;
+    dir=0;
+    dev=0;
+    num=0;
+    dirDev=0;
+    return 0;
+  }
+  switch (button)
+  {
+    case DUI_KEY_LEFT :
+      if(pos>0) pos--;
+      else pos=8; // Permet de passer à la case test sans passer par les réglages de position
+      break;
+    case DUI_KEY_RIGHT :
+      if(pos<9) pos++;
+      else pos=0;
+      break;
+    case DUI_KEY_ESC :
+      return UI_PAGE_MAIN;
+    case DUI_KEY_OK :
+      if(pos==9) // La programmation n'est possible que si le curseur est sur la case PROG
+      {
+          Wire.beginTransmission(addr);
+          Wire.write((byte)0x34); // Programmation de la configuration
+          Wire.write(num);
+          Wire.write(dir);
+          Wire.write(dev);
+          Wire.endTransmission();
+      }
+      return 0;
+  }
+  switch(pos)
+  {
+    case 0 :
+    case 1 :
+      addr=uiPageHexInput(button,0,0,pos,addr);
+      break;
+    case 2 :
+    case 3 :
+      num=uiPageHexInput(button,4,0,pos-2,num);
+      Wire.beginTransmission(addr);
+      Wire.write((byte)0x35); // Adressage direct
+      Wire.write(num);
+      Wire.write(dir);
+      Wire.endTransmission();
+      Wire.requestFrom(addr,(byte)2);
+      dir=Wire.read(); // Lit la programmation existante
+      dev=Wire.read();
+      dir=uiPageHexInput(0,9,0,0,dir);
+      dev=uiPageHexInput(0,14,0,0,dev);
+      uiPageHexInput(0,4,0,pos-2,num);
+      break;
+    case 4 :
+    case 5 :
+      if(button==DUI_KEY_SPEED)
+        dir=uiPageHexInput(0,9,0,pos&1,speedInput>>1);
+       else
+        dir=uiPageHexInput(button,9,0,pos&1,dir);
+      Wire.beginTransmission(addr);
+      Wire.write((byte)0x37); // Adressage direct
+      Wire.write(num);
+      Wire.write(dir);
+      Wire.endTransmission();
+      break;
+    case 6 :
+    case 7 :
+      if(button==DUI_KEY_SPEED)
+        dev=uiPageHexInput(0,14,0,pos&1,speedInput>>1);
+       else
+        dev=uiPageHexInput(button,14,0,pos&1,dev);
+      Wire.beginTransmission(addr);
+      Wire.write((byte)0x37); // Adressage direct
+      Wire.write(num);
+      Wire.write(dev);
+      Wire.endTransmission();
+      break;
+    case 8 :
+      lcd.setCursor(7, 1); // Test de l'aiguillage
+      switch (button)
+      {
+        case DUI_KEY_UP :
+        case DUI_KEY_DOWN :
+          dirDev=!dirDev;
+          lcd.write(dirDev);
+          Wire.beginTransmission(addr);
+          Wire.write((byte)0x37); // Adressage direct
+          Wire.write(num);
+          Wire.write(dirDev?dev:dir);
+          Wire.endTransmission();
+          break;
+      }
+      lcd.setCursor(7, 1);
+      break;
+    case 9 :
+      lcd.setCursor(15, 1);
       break;
   }
   return 0;
@@ -1746,6 +1872,7 @@ byte uiPageMain(byte button, byte mode)
         case 7 : return UI_PAGE_I2C_NAME;
         case 8 : return UI_PAGE_PCA9685_MAIN;
         case 9 : return UI_PAGE_I2C_AIEA;
+        case 10 : return UI_PAGE_I2C_AISV;
       }
       break;
   }
@@ -1761,6 +1888,7 @@ byte uiPageMain(byte button, byte mode)
     case 7 : lcd.print(F("I2C Id        ")); break;
     case 8 : lcd.print(F("TEST PCA9685  ")); break;
     case 9 : lcd.print(F("PROG Aig EA   ")); break;
+    case 10 : lcd.print(F("PROG Aig SV   ")); break;
 
 //    Les fonctions suivantes sont en cours de mise au point
 //    -> https://codeinter-net.blogspot.com/
@@ -1800,6 +1928,7 @@ byte uiPage(byte button, byte mode)
     case UI_PAGE_PCA9685_MAIN : return uiPageMainPCA9685(button, mode);
     case UI_PAGE_PCA9685 : return uiPagePCA9685(button, mode);
     case UI_PAGE_I2C_AIEA : return uiPageMainProgAIEA(button, mode);
+    case UI_PAGE_I2C_AISV : return uiPageMainProgAISV(button, mode);
   }
 }
 
