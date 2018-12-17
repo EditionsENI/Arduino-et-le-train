@@ -1,7 +1,7 @@
 // --------------------------------------------------------------------
 // --- DiCiCino : Centrale de commande de trains au format DCC      ---
 // --- Pascal Barlier 08/10/2014                                    ---
-// --- Version pour ATMege2560                                      ---
+// --- Version pour ATMega2560                                      ---
 // --------------------------------------------------------------------
 
 #include <FlexiTimer2.h>        // http://playground.arduino.cc/Main/FlexiTimer2
