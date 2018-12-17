@@ -7,6 +7,9 @@ Pourquoi ne pas utiliser ces microcontrôleurs très populaires et peu coûteux 
 Version améliorée du programme "dicicino-uno-totale.ino" du chapitre 12.
 Il intègre les fonctions suivantes : pilotage DCC, programmeur de CV, scanner I²C, testeur I²C, changeur d'adresse I²C, moniteur I²C, testeur PCA9685, Testeur/programmeur d'aiguillages à électro-aimants ou à servomoteurs.
 
+### dicicino-mega.ino
+Centrale de commande de trains au format DCC. Version pour ATMega2560 décrite au chapitre 8. Permet la commande simultanée de 8 trains au moyen d'un panneau de contrôle.
+
 ### i2c-echo.ino
 Enregistrement d'une série d'octets, puis renvoi de celle-ci. Ne sert que pour tester la fiabilité d'un bus I²C.
 Version améliorée du programme "i2c-test-slave.ino" du chapitre 4.
