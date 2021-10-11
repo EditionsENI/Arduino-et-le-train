@@ -9,7 +9,7 @@
 #include <FlexiTimer2.h>
 #include <EEPROM.h>
 
-// MX0 - MX3 : sorties multiplées
+// MX0 - MX3 : sorties multiplexées
 // -> JLX1 + JLX2 = Colonnes LED + Clavier
 // -> JKX2 + JKX2 = Colonnes clavier
 
@@ -118,7 +118,7 @@ void setup()
 
 void loop()
 {
-  delay(1000);
+  delay(100);
   // exemple d'utilisation : le bouton 1 commande la LED 1
   byte a=KEY(1);
   LED(1,a);
