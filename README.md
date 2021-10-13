@@ -1,5 +1,6 @@
 # Arduino-et-le-train
 Programmes du livre "Arduino : faites-le jouer au train" avec mises à jour
+https://www.editions-eni.fr/livre/arduino-faites-le-jouer-au-train-2e-edition-9782409032455
 
 Les dernières versions des programmes sont disponibles ici.
 
