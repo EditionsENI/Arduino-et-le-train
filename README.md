@@ -9,5 +9,7 @@ Les dernières versions des programmes sont disponibles ici.
 L'onglet "Discussions" permet d'accéder à diverses rubriques :
 - nouveautés
 - questions-résponses
-- bugs
+- idées
 - réalisations
+
+Les bugs sont gérés dans l'onglet "Issues" 
