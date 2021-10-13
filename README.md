@@ -6,4 +6,8 @@ Les dernières versions des programmes sont disponibles ici.
 - Dossier V1 : programmes de la première édition du livre (2018)
 - Dossier V2 : programmes de la deuxième édition du livre (2021)
 
-L'onglet "Discussions" permet d'accéder à un espace de questions-résponses
+L'onglet "Discussions" permet d'accéder à diverses rubriques :
+- nouveautés
+- questions-résponses
+- bugs
+- réalisations
