@@ -8,7 +8,7 @@ Les dernières versions des programmes sont disponibles ici :
 - Dossier V2 : programmes de la deuxième édition du livre (2021)
 
 Les différentes rubriques :
-- Documentation -> onglet _Wiki_
+- Documentation -> onglet *Wiki*
 - Actualités, questions-réponses -> onglet _Discussion_
 - Bugs -> onglet _Issues_
 
