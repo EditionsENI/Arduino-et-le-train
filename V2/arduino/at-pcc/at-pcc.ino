@@ -1,4 +1,5 @@
 // AT-PCC
+// PBA 2021-10-10
 
 // Ce programme est encore en cours d'évolution
 // La version la plus récente est disponible à l'adresse suivante :
@@ -10,7 +11,7 @@
 #include <EEPROM.h>
 
 // ----------------------------------------------------
-// --- Définition des entrées-sorties ---
+// --- Définition des entrées-sorties
 // ----------------------------------------------------
 
 // MX0 - MX3 : sorties multiplexées
@@ -61,7 +62,7 @@
 #define JLY3PIN PINL
 
 // ----------------------------------------------------
-// --- Définitions utilisées pour définir le réseau --
+// --- Définitions utilisées pour définir le réseau
 // ----------------------------------------------------
 
 #define DIR 0
@@ -91,9 +92,8 @@ byte canton[MAX_CANTON];
 #define getCanton(n) (canton[(n)])
 
 // ----------------------------------------------------
-// Etat des LED du TCO
+// --- Etat des LED du TCO
 // ----------------------------------------------------
-
 
 #define MAX_LED 48
 byte led[MAX_LED]; // 3 groupes de lignes x 16 colonnes x 8 bits par ligne = 384 LED
@@ -112,10 +112,10 @@ byte led[MAX_LED]; // 3 groupes de lignes x 16 colonnes x 8 bits par ligne = 384
 // Lit l'état d'une LED
 // n = numéro du bouton
 
-// TODO : getLedRGB
+#define getLedRGB(n) ((getLed(n)<<2)|(getLed(n+128)<<1)|(getLed(n+256)))
 
 // ----------------------------------------------------
-// Lecture des bouton du TCO
+// --- Lecture des boutons du TCO
 // ----------------------------------------------------
 
 #define MAX_BTN 32
@@ -128,6 +128,10 @@ byte btn[MAX_BTN]; // 2 groupes de lignes x 16 colonnes x 8 bits par ligne = 256
 // ----------------------------------------------------
 // --- Commande des aiguillages
 // ----------------------------------------------------
+
+// Commandes I2C
+#define CMD_MOVE_DIR 0x30 // Déplace une aiguille en voie directe
+#define CMD_MOVE_DEV 0x31 // Déplace une aiguille en voie déviée
 
 #define MAX_AIG 32
 byte aig[MAX_AIG]; // 32 x 8 = 256 aiguillages
@@ -169,7 +173,7 @@ void setAig(word n,byte s)
   if(aigIdx>aigList[index].offset+aigList[index].size) return; // numéro invalide
 
   Wire.beginTransmission(aigList[index].addr);
-  Wire.write(s?0x31:0x30); // Commande moveDir ou moveDev
+  Wire.write(s?CMD_MOVE_DEV:CMD_MOVE_DIR); // Commande moveDir ou moveDev
   Wire.write(n-(aigList[index].offset<<3)); // Numéro de l'aiguillage à commander
   Wire.endTransmission();
 
@@ -177,7 +181,7 @@ void setAig(word n,byte s)
   aig[aigIdx]=s?(aig[aigIdx]|(1<<aigBit)):(aig[(n)>>3]&~(1<<aigBit));
 }
 
-#define getAig(n) (aig[(n)>>3]>>((n)&7))&1)
+#define getAig(n) ((aig[(n)>>3]>>((n)&7))&1)
 // Lit la position d'un aiguillage
 // n = numéro de l'aiguillage
 
@@ -185,7 +189,7 @@ void setAig(word n,byte s)
 // --- Lecture des détecteurs de passage
 // ----------------------------------------------------
 
-#define MAX_DET 4
+#define MAX_DET 24
 byte det[MAX_DET];
 
 struct _det_list_
@@ -197,20 +201,23 @@ struct _det_list_
 
 struct _det_list_ detList[]
 {
-  {0x61,0,4}, // détecteurs en adresse 0x61, 4 octets réservés -> 32 détecteurs
+  {0x61,0,24}, // détecteurs en adresse 0x61, 24 octets réservés -> 192 détecteurs
 };
 
-#define aigListSize (sizeof(detList)/sizeof(*detList))
+#define detListSize (sizeof(detList)/sizeof(*detList))
 
 void scanDet(void)
 {
+  for(byte i=0; i<detListSize; i++)
+  {
+    byte numBytes=Wire.requestFrom(detList[0].addr,(byte)detList[0].size); // Attend les données
+    byte index=detList[0].offset;
+    for(byte n=0; (n<numBytes)&&Wire.available(); n++)
+      det[index++]=Wire.read(); // Lit les données
+  }
 }
 
-
-byte getDet(word n)
-{
-  return 0;
-}
+#define getDet(n) ((det[(n)>>3]>>((n)&7))&1)
 
 // ----------------------------------------------------
 // --- Commande des régulateurs
@@ -239,10 +246,7 @@ void setSig(word n,byte s)
 {
 }
 
-byte getSig(word n)
-{
-  return 0;
-}
+#define getSig(n) ((sig[(n)>>3]>>((n)&7))&1)
 
 // ----------------------------------------------------
 // --- Interruption
@@ -426,7 +430,7 @@ void testDet(void)
 void loop()
 {
   scanDet(); // Lecture des détecteurs de passage
-
+  demo();
   delay(10);
 }
 
