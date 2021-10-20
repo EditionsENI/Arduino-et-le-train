@@ -62,12 +62,12 @@
 #define JLY3PIN PINL
 
 // ----------------------------------------------------
-// --- Définitions utilisées pour définir le réseau
+// --- Constantes utilisées pour définir le réseau
 // ----------------------------------------------------
 
-#define DIR 0
+#define DIR 0 // Direction des aiguillages
 #define DEV 1
-#define ON 1
+#define ON 1 // Etat des détecteurs, des boutons et des autres signaux
 #define OFF 0
 // Couleurs utilisées par les LED du panneau et par les signaux
 #define NOIR 0
@@ -92,11 +92,22 @@ byte canton[MAX_CANTON];
 #define getCanton(n) (canton[(n)])
 
 // ----------------------------------------------------
+// --- Pile d'événements
+// ----------------------------------------------------
+
+#define EVSTACK_SIZE 256
+word evStack[EVSTACK_SIZE];
+byte evStackIn=0;
+byte evStackOut=0;
+
+// ----------------------------------------------------
 // --- Etat des LED du TCO
 // ----------------------------------------------------
 
 #define MAX_LED 48
 byte led[MAX_LED]; // 3 groupes de lignes x 16 colonnes x 8 bits par ligne = 384 LED
+
+// Les LED sont accédées sycliquement par la routine sous interruption
 
 #define setLed(n,s) led[(n)>>3]=s?(led[(n)>>3]|(1<<((n)&7))):(led[(n)>>3]&~(1<<((n)&7)))
 // Change l'état d'une LED
@@ -120,6 +131,9 @@ byte led[MAX_LED]; // 3 groupes de lignes x 16 colonnes x 8 bits par ligne = 384
 
 #define MAX_BTN 32
 byte btn[MAX_BTN]; // 2 groupes de lignes x 16 colonnes x 8 bits par ligne = 256 boutons
+byte btn2[MAX_BTN]; // Etat précédent afin de détecter les changements d'état
+
+// La lecture est effectuée cycliquement par la routine sous interruption
 
 #define getBtn(n) ((btn[(n)>>3]>>((n)&7))&1)
 // Lit un bouton
@@ -191,6 +205,9 @@ void setAig(word n,byte s)
 
 #define MAX_DET 24
 byte det[MAX_DET];
+byte det2[MAX_DET]; // Etat précédent afin de détecter les changements d'état
+
+#define DET 0x1000 // Indique un événement détecteur
 
 struct _det_list_
 {
@@ -213,7 +230,27 @@ void scanDet(void)
     byte numBytes=Wire.requestFrom(detList[0].addr,(byte)detList[0].size); // Attend les données
     byte index=detList[0].offset;
     for(byte n=0; (n<numBytes)&&Wire.available(); n++)
-      det[index++]=Wire.read(); // Lit les données
+    {
+      det[index]=Wire.read(); // Lit les données
+      byte change=det[index]^det2[index]; // Changement d'état d'un détecteur
+      if(change)
+      {
+        byte button=det[index]&change;
+        if(button)  // transition vers présence -> bit à un
+        { // Pas de boucle pour optimiser le code
+          if(button&1) evStack[evStackIn++]=(index<<3)|DET;
+          if(button&2) evStack[evStackIn++]=((index<<3)+1)|DET;
+          if(button&4) evStack[evStackIn++]=((index<<3)+2)|DET;
+          if(button&8) evStack[evStackIn++]=((index<<3)+3)|DET;
+          if(button&16) evStack[evStackIn++]=((index<<3)+4)|DET;
+          if(button&32) evStack[evStackIn++]=((index<<3)+5)|DET;
+          if(button&64) evStack[evStackIn++]=((index<<3)+6)|DET;
+          if(button&128) evStack[evStackIn++]=((index<<3)+7)|DET;
+        }
+        det2[index]=det[index];
+      }
+      index++;
+    }
   }
 }
 
@@ -223,17 +260,60 @@ void scanDet(void)
 // --- Commande des régulateurs
 // ----------------------------------------------------
 
+#define CMD_REG_NORM 0x50
+#define CMD_REG_SET_SPEED_28 0x51
+
 #define MAX_REG 32
 byte reg[MAX_REG];
 
+struct _reg_list_
+{
+  byte addr; // Adresse I2C de l'interface
+  word offset; // Début du stockage dans le tableau reg
+  byte size; // Nombre d'octets utilisés dans le tableau reg
+};
+
+struct _reg_list_ regList[]
+{
+  {0x71,0,4},
+};
+
+#define regListSize (sizeof(regList)/sizeof(*regList))
+
 void setReg(word n,byte s)
 {
+  byte addr=0;
+  byte ampli;
+  for(byte i=0; i<regListSize; i++)
+  {
+    if(n<regList[i].size)
+    {
+      addr=regList[i].addr;
+      ampli=n;
+      break;
+    }
+    n-=regList[i].offset;
+  }
+  if(!addr) return; // n est trop élevé
+
+  Wire.beginTransmission(addr);
+  if(s)
+  {
+  
+    Wire.write(CMD_REG_SET_SPEED_28);
+    Wire.write(ampli);
+    Wire.write((byte)0);
+  }
+  else
+  {
+  
+    Wire.write(CMD_REG_NORM);
+    Wire.write(ampli);
+  }
+  Wire.endTransmission();
 }
 
-byte getReg(word n)
-{
-  return 0;
-}
+#define getReg(n) ((reg[(n)>>3]>>((n)&7))&1)
 
 // ----------------------------------------------------
 // --- Pilotage des signaux
@@ -252,23 +332,64 @@ void setSig(word n,byte s)
 // --- Interruption
 // ----------------------------------------------------
 
+#define BTN 0 // Indique un événement bouton
+
 void interrupt(void)
 // Balayage des matrices clavier et LED
 {
   static byte count=0;
+  byte count1=count+NUM_COL;
+  byte count2;
 
   // Lecture des touches du clavier : inversion des données lues
-  btn[count]=~JKY1PIN; 
-  btn[count+NUM_COL]=~JKY2PIN; 
+  btn[count]=~JKY1PIN;
+  byte change=btn[count]^btn2[count]; // Changement d'état d'un bouton
+  if(change)
+  {
+    byte button=btn[count]&change;
+    if(button)  // transition vers appui -> bit à un
+    { // Pas de boucle pour optimiser le code de l'interruption
+      if(button&1) evStack[evStackIn++]=(count<<3);
+      if(button&2) evStack[evStackIn++]=(count<<3)+1;
+      if(button&4) evStack[evStackIn++]=(count<<3)+2;
+      if(button&8) evStack[evStackIn++]=(count<<3)+3;
+      if(button&16) evStack[evStackIn++]=(count<<3)+4;
+      if(button&32) evStack[evStackIn++]=(count<<3)+5;
+      if(button&64) evStack[evStackIn++]=(count<<3)+6;
+      if(button&128) evStack[evStackIn++]=(count<<3)+7;
+    }
+    btn2[count]=btn[count];
+  }
+
+  btn[count1]=~JKY2PIN;
+  change=btn[count1]^btn2[count1]; // Changement d'état d'un bouton
+  if(change)
+  {
+    byte button=btn[count1]&change;
+    if(button)  // transition vers appui -> bit à un
+    { // Pas de boucle pour optimiser le code de l'interruption
+      if(button&1) evStack[evStackIn++]=(count1<<3);
+      if(button&2) evStack[evStackIn++]=(count1<<3)+1;
+      if(button&4) evStack[evStackIn++]=(count1<<3)+2;
+      if(button&8) evStack[evStackIn++]=(count1<<3)+3;
+      if(button&16) evStack[evStackIn++]=(count1<<3)+4;
+      if(button&32) evStack[evStackIn++]=(count1<<3)+5;
+      if(button&64) evStack[evStackIn++]=(count1<<3)+6;
+      if(button&128) evStack[evStackIn++]=(count1<<3)+7;
+    }
+    btn2[count1]=btn[count1];
+  }
 
   // Inhibition des colonnes pendant le changement de valeur des LED
   digitalWrite(MXE,HIGH);
   // Changement de colonne
   count=(count+1)&15;
+  count1=count+NUM_COL;
+  count2=count1+NUM_COL;
 
   JLY1PORT=led[count];
-  JLY2PORT=led[count+NUM_COL];
-  JLY3PORT=led[count+(NUM_COL*2)];
+  JLY2PORT=led[count1];
+  JLY3PORT=led[count2];
 
   // activation des sorties
   digitalWrite(MX0,count&1);
@@ -332,14 +453,14 @@ void setup()
 
 // Il y a deux détecteurs par canton, celui d'entrée permet de savoir qu'un canton et occupé
 // celui de sortie est placé avant le signal et permet l'arrêt à hauteur de celui-ci
-#define DET_E1 21
-#define DET_S1 22
-#define DET_E2 23
-#define DET_S2 24
-#define DET_E3 25
-#define DET_S3 26
-#define DET_E22 31
-#define DET_S22 32
+#define DET_E1 21|DET
+#define DET_S1 22|DET
+#define DET_E2 23|DET
+#define DET_S2 24|DET
+#define DET_E3 25|DET
+#define DET_S3 26|DET
+#define DET_E22 31|DET
+#define DET_S22 32|DET
 
 // Les signaux sont aussi déclarés
 #define SIG_1 31
@@ -371,66 +492,59 @@ void setup()
 #define LED_AIG2 51
 #define LED_AIG22 52
 
-// La gestion du réseau est effectuée dans la fonction demo
+// La gestion du réseau est effectuée dans la fonction execEvent
 // Il s'agit d'un gestionnaire d'événements
 // Les fonctions get permettent de tester les conditions
 // Les fonctions set permettent de changer d'état
 
-void demo()
+void execEvent(word event)
 {
-  // Bascule l'aiguillage vers la voie directe
-  if(getBtn(BTN_AIG_2))
+  switch(event)
   {
-    setLed(LED_AIG2,ON);
-    setLed(LED_AIG22,OFF);
-    setAig(AIG_2_22,DIR);
-    setSig(SIG_22,CARRE);
-    setLed(LED_SIG22,CARRE);
-    setCanton(22,CARRE);
-  }
-  // Bascule l'aiguillage vers la voie déviée
-  if(getBtn(LED_AIG22))
-  {
-    setLed(LED_AIG22,ON);
-    setLed(LED_AIG2,OFF);
-    setAig(AIG_2_22,DEV);
-    setSig(SIG_2,CARRE);
-    setLed(LED_SIG2,CARRE);
-    setCanton(2,CARRE);
-  }
-  // Bouton d'arrêt forcé sur le canton 1
-  if(getBtn(BTN_STOP_1))
-  {
-    setSig(SIG_1,CARRE);
-    setLed(LED_SIG1,CARRE);
-    setCanton(1,CARRE);
+    case BTN_AIG_2 : // Bascule l'aiguillage vers la voie directe
+      setLed(LED_AIG2,ON);
+      setLed(LED_AIG22,OFF);
+      setAig(AIG_2_22,DIR);
+      setSig(SIG_22,CARRE);
+      setLed(LED_SIG22,CARRE);
+      setCanton(22,CARRE);
+      break;
+    case LED_AIG22 : // Bascule l'aiguillage vers la voie déviée
+      setLed(LED_AIG22,ON);
+      setLed(LED_AIG2,OFF);
+      setAig(AIG_2_22,DEV);
+      setSig(SIG_2,CARRE);
+      setLed(LED_SIG2,CARRE);
+      setCanton(2,CARRE);
+      break;
+    case BTN_STOP_1 : // Bouton d'arrêt forcé sur le canton 1
+      setSig(SIG_1,CARRE);
+      setLed(LED_SIG1,CARRE);
+      setCanton(1,CARRE);
+      break;
   }
 }
 
 // ----------------------------------------------------
-// --- Fonctions de test et boucle principale
+// --- Boucle principale
 // ----------------------------------------------------
 
-void testBtn(void)
-// Affiche les boutons qui sont pressés
-{
-  for(word i=0; i<(MAX_BTN*NUM_COL); i++)
-    if(getBtn(i))
-      Serial.println(i);
-}
-
-void testDet(void)
-// Affiche les détecteurs qui sont actifs
-{
-  for(word i=0; i<(MAX_DET*NUM_COL); i++)
-    if(getBtn(i))
-      Serial.println(i);
-}
+#define TEST false
 
 void loop()
 {
   scanDet(); // Lecture des détecteurs de passage
-  demo();
+  while(evStackIn!=evStackOut) // Il y a des événements dans la pile
+  {
+    if(TEST) // Affichage des événements
+    {
+      Serial.print(evStack[evStackOut]&0xF000); // type d'événement
+      Serial.print(" ");
+      Serial.println(evStack[evStackOut]&0xFFF); // numéro de l'événement
+    }
+    execEvent(evStack[evStackOut++]); // Dépilage des événements
+  }
   delay(10);
 }
+
 
