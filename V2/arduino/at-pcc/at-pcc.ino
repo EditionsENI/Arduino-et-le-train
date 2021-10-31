@@ -69,6 +69,8 @@
 #define DEV 1
 #define ON 1 // Etat des détecteurs, des boutons et des autres signaux
 #define OFF 0
+#define OK 1
+#define STOP 0
 // Couleurs utilisées par les LED du panneau et par les signaux
 #define NOIR 0
 #define ROUGE 1
@@ -299,16 +301,14 @@ void setReg(word n,byte s)
   Wire.beginTransmission(addr);
   if(s)
   {
-  
-    Wire.write(CMD_REG_SET_SPEED_28);
+    Wire.write(CMD_REG_NORM);
     Wire.write(ampli);
-    Wire.write((byte)0);
   }
   else
   {
-  
-    Wire.write(CMD_REG_NORM);
+    Wire.write(CMD_REG_SET_SPEED_28);
     Wire.write(ampli);
+    Wire.write((byte)0); // Arrêt
   }
   Wire.endTransmission();
 }
@@ -319,14 +319,44 @@ void setReg(word n,byte s)
 // --- Pilotage des signaux
 // ----------------------------------------------------
 
-#define MAX_SIG 32
-byte sig[MAX_SIG];
+#define CMD_SIG_SET 0x60
+
+struct _sig_list_
+{
+  byte addr; // Adresse I2C de l'interface
+  word offset; // Début du stockage dans le tableau reg
+  byte size; // Nombre d'octets utilisés dans le tableau sig
+};
+
+struct _sig_list_ sigList[]
+{
+  {0x81,0,8},
+};
+
+#define sigListSize (sizeof(sigList)/sizeof(*sigList))
 
 void setSig(word n,byte s)
 {
+  byte addr=0;
+  byte sigNum;
+  for(byte i=0; i<sigListSize; i++)
+  {
+    if(n<sigList[i].size)
+    {
+      addr=sigList[i].addr;
+      sigNum=n;
+      break;
+    }
+    n-=sigList[i].offset;
+  }
+  if(!addr) return; // n est trop élevé
+  
+  Wire.beginTransmission(addr);
+  Wire.write(CMD_SIG_SET);
+  Wire.write(sigNum);
+  Wire.write((byte)s);
+  Wire.endTransmission();
 }
-
-#define getSig(n) ((sig[(n)>>3]>>((n)&7))&1)
 
 // ----------------------------------------------------
 // --- Interruption
@@ -472,7 +502,7 @@ void setup()
 #define REG_1 41
 #define REG_2 42
 #define REG_3 43
-#define REG_4 44
+#define REG_22 44
 
 // On paramètre aussi les boutons du PCC
 #define BTN_STOP_1 21// Arrêt forcé dans le canton 1
@@ -521,6 +551,31 @@ void execEvent(word event)
       setSig(SIG_1,CARRE);
       setLed(LED_SIG1,CARRE);
       setCanton(1,CARRE);
+      break;
+    case DET_E1 :
+      break;
+    case DET_S1 :
+      break;
+    case DET_E2 :
+      break;
+    case DET_S2 :
+      if(getCanton(2)==CARRE)
+        setReg(REG_2,STOP);
+      else
+        setReg(REG_2,OK);
+      break;
+      break;
+    case DET_E3 :
+      break;
+    case DET_S3 :
+      break;
+    case DET_E22 :
+      break;
+    case DET_S22 :
+      if(getCanton(22)==CARRE)
+        setReg(REG_22,STOP);
+      else
+        setReg(REG_22,OK);
       break;
   }
 }
