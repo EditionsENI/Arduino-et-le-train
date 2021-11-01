@@ -1034,7 +1034,8 @@ byte controlScan(void)
       // Mise à jour des paramètres de pilotage
       if(control->spd!=spd)
       {
-        packetFormat(DCC_PACKET_TYPE_SPEED|ext|crans,loco,spd&0x3FF,spd>>14); // Vitesse et sens de déplacement
+        word sens=spd>>14;
+        packetFormat(DCC_PACKET_TYPE_SPEED|ext|crans,loco,(sens!=3)?spd&0x3FF:0,sens); // Vitesse et sens de déplacement
         changed=true;
       }
       if(((control->F.b[0]&0xF)!=(F.b[0]&0xF))||((control->spd&0xC000)!=(spd&0xC000))) // F0 - F4
