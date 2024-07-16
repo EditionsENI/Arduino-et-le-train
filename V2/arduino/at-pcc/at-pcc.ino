@@ -185,7 +185,7 @@ void setAig(word n,byte s)
   byte index;
   for(index=0; index<aigListSize ; index++)
     if(aigList[index].offset<=aigIdx) break;
-  if(index<aigListSize) return; // numéro invalide
+  if(index==aigListSize) return; // numéro invalide
   if(aigIdx>aigList[index].offset+aigList[index].size) return; // numéro invalide
 
   Wire.beginTransmission(aigList[index].addr);
